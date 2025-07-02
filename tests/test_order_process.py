@@ -22,3 +22,11 @@ def test_create_products(client):
         assert product["price"] == product_data["price"]
         assert product["stock"] == product_data["stock"]
         created_products.append(product)
+
+
+
+    response = client.get('/api/products')
+    assert response.status_code == 200
+    products = response.get_json()
+    assert len(products) == 4
+    print(f"Created {len(products)} products successfully")
