@@ -32,3 +32,36 @@ class Product(db.Model):
             'price': self.price,
             'stock': self.stock
         }
+
+
+
+
+# Order Rel Mapping
+# - payment_status -> pending, paid
+# - payment_reference -> nullable string
+# - shipping_status -> pending, in_progress, delivered
+# - name
+# - email
+# - order_items <- back-ref
+
+
+class Order(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    payment_status = db.Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+    payment_reference = db.Column(db.String(255), nullable=True)
+    shipping_status =db.Column(Enum(ShippingStatus), default=ShippingStatus.PENDING, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), nullable=False)
+    items = db.relationship('OrderItem', back_populates='order')
+
+    def serialize(self):
+        return {
+            'id': self.id,
+            'payment_status': self.payment_status.value,
+            'payment_reference': self.payment_reference,
+            'shipping_status': self.shipping_status.value,
+            'name': self.name,
+            'email': self.email,
+            'items': [item.serialize() for item in self.items]
+        }
+
