@@ -3,7 +3,7 @@ from .models import Product, Order, OrderItem, PaymentStatus, ShippingStatus
 from . import db
 import random, string
 from flask import abort
-
+from app.helper import send_email
 
 
 # api for order process:
@@ -171,6 +171,16 @@ def pay_order(order_id):
         order.payment_reference = payment_reference
 
         db.session.commit()
+        send_email(
+            subject="Order Confirmation",
+            to=order.email,
+            template="email/order_confirmation.html",
+
+            name = order.name,
+            order_id=  order.id,
+            payment_reference = order.payment_reference,
+            total_amount= order.total_amount
+)
         return jsonify({
             'message': 'Payment successful',
             'payment_reference': payment_reference,
