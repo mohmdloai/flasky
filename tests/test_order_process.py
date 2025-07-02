@@ -88,4 +88,32 @@ class TestOrderProcess:
 
         print(f"Successfully added item to order {order_id}, {order['items']}")
 
-        
+
+
+    def test_payment_process(self, client):
+
+        order_data= {
+        "name": "loai",
+            "email": "loai@gmail.com",
+            "items": [
+                {"product_id": 1, "quantity": 1}
+            ]
+    }
+
+        response = client.post('/api/orders', json= order_data)
+        assert response.status_code == 201
+        print("\n loai order created\n")
+        order_id = response.get_json()['id']
+        print(order_id)
+
+
+        response = client.post(f'/api/orders/{order_id}/pay')
+        assert response.status_code == 200
+
+        get_payment= response.get_json()
+        assert get_payment['message'] == 'Payment successful'
+        assert 'payment_reference' in get_payment
+        assert get_payment['payment_reference'].startswith('Ref_')
+        assert get_payment['order']['payment_status'] == 'paid'
+
+        print(get_payment['payment_reference'])
