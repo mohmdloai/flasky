@@ -62,9 +62,13 @@ class Order(db.Model):
             'shipping_status': self.shipping_status.value,
             'name': self.name,
             'email': self.email,
-            'items': [item.serialize() for item in self.items]
+            'items': [item.serialize() for item in self.items],
+            'total_amount': self.total_amount
         }
 
+    @property
+    def total_amount(self):
+        return sum(item.quantity * item.product.price for item in self.items)
 
 
 # Map as normalization -> OrderItem
