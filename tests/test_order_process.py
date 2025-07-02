@@ -1,32 +1,47 @@
 import pytest
-from app.models import Product, Order, OrderItem, PaymentStatus, ShippingStatus
+from app.models import Product,db, Order, OrderItem, PaymentStatus, ShippingStatus
+
+class TestOrderProcess:
+
+    @pytest.fixture(autouse=True)
+    def setup_products(self, client):
+        self.client = client
+        with client.application.app_context():
+            products = [
+                Product(name="Galaxy 26 Ultra", price=1299.99, stock=4),
+                Product(name="MackBook Air", price=2299.99, stock=7),
+                Product(name="MackBook Pro", price=3009.00, stock=9),
+                Product(name="MackBook Pro Max", price=4000.00, stock=5),
+            ]
+            db.session.add_all(products)
+            db.session.commit()
+
+    def test_create_products(self):
+        response = self.client.get('/api/products')
+        assert response.status_code == 200
+        products = response.get_json()
+        assert len(products) == 4
+        print(f"Created {len(products)}, can get all products successfully")
+        print(products)
 
 
-def test_create_products(client):
-    products_data= [
-        {"name": "Galaxy 26 Ultra", "price": 1299.99, "stock": 4},
-        {"name": "MackBook Air", "price": 2299.99, "stock": 7},
-        {"name": "MackBook Pro", "price": 3009.00, "stock": 9},
-        {"name": "MackBook Pro Max", "price": 4000.00, "stock": 5},
+    def test_create_order_with_items(self, client):
+        order_data= {
+            "name": "me",
+                "email": "me@gmail.com",
+                "items": [
+                    {"product_id": 1, "quantity": 2},
+                    {"product_id": 2, "quantity": 1}
+                ]
+        }
+
+        response = client.post('/api/orders', json= order_data)
+        assert response.status_code == 201
 
 
-    ]
-
-
-    created_products = []
-    for product_data in products_data:
-        response = client.post('/api/products', json= product_data)
-        assert response.status_code== 201
-        product = response.get_json()
-        assert product["name"] == product_data["name"]
-        assert product["price"] == product_data["price"]
-        assert product["stock"] == product_data["stock"]
-        created_products.append(product)
-
-
-
-    response = client.get('/api/products')
-    assert response.status_code == 200
-    products = response.get_json()
-    assert len(products) == 4
-    print(f"Created {len(products)} products successfully")
+        order = response.get_json()
+        assert order["name"] == "me"
+        assert order["email"] == "me@gmail.com"
+        assert order['payment_status'] == "pending"
+        assert order['shipping_status'] == "pending"
+        assert len(order['items']) == 2
