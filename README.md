@@ -53,6 +53,7 @@ python -m venv .venv
 
 # Activate virtual environment (Command Prompt)
 .venv\Scripts\activate
+```
 
 
 ### 2. Install Dependencies
@@ -77,7 +78,7 @@ MAIL_USE_TLS=True
 MAIL_USERNAME=your_email@gmail.com
 MAIL_PASSWORD=your_app_password
 MAIL_DEFAULT_SENDER=your_email@gmail.com
-
+```
 
 ### 1. Initialize Database
 
@@ -112,6 +113,7 @@ The complete order processing involves three main API calls:
 #### 1. Create Products (Setup)
 
 First, create some products in your inventory:
+```
 
 ```bash
 curl -X POST http://localhost:3000/api/products \
