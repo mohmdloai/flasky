@@ -65,3 +65,26 @@ class Order(db.Model):
             'items': [item.serialize() for item in self.items]
         }
 
+
+
+# Map as normalization -> OrderItem
+# - product: 12M => one OI has -> many Prods
+# - quantity
+# - order: FK
+
+class OrderItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    order = db.relationship('Order', back_populates='items') # => for objs level
+    product = db.relationship('Product')
+
+    def serialize(self):
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'order_id': self.order_id,
+            'quantity': self.quantity,
+            'product': self.product.serialize() if self.product else None
+        }
