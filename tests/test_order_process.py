@@ -30,8 +30,8 @@ class TestOrderProcess:
             "name": "me",
                 "email": "me@gmail.com",
                 "items": [
-                    {"product_id": 1, "quantity": 2},
-                    {"product_id": 2, "quantity": 1}
+                    {"product_id": 1, "quantity": 3},
+                    {"product_id": 2, "quantity": 3}
                 ]
         }
 
@@ -45,3 +45,14 @@ class TestOrderProcess:
         assert order['payment_status'] == "pending"
         assert order['shipping_status'] == "pending"
         assert len(order['items']) == 2
+
+
+        response = client.get('/api/products')
+        products = response.get_json()
+        assert response.status_code == 200
+        galaxy = next(prod for prod in products if prod['id'] == 1)
+        macbook_air = next(prod for prod in products if prod['id'] == 2)
+        assert galaxy['stock'] == 1
+        assert macbook_air['stock'] == 4
+        print(f"Created order with ID {order['id']}")
+        print(f"Updated stock - Galaxy 26 Ultra: {galaxy['stock']}, MacBook Air: {macbook_air['stock']}")
