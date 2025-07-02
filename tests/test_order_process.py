@@ -28,7 +28,7 @@ class TestOrderProcess:
     def test_create_order_with_items(self, client):
         order_data= {
             "name": "me",
-                "email": "me@gmail.com",
+                "email": "mhmed.00.eng@gmail.com",
                 "items": [
                     {"product_id": 1, "quantity": 3},
                     {"product_id": 2, "quantity": 3}
@@ -41,7 +41,7 @@ class TestOrderProcess:
 
         order = response.get_json()
         assert order["name"] == "me"
-        assert order["email"] == "me@gmail.com"
+        assert order["email"] == "mhmed.00.eng@gmail.com"
         assert order['payment_status'] == "pending"
         assert order['shipping_status'] == "pending"
         assert len(order['items']) == 2
