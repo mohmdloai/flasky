@@ -56,3 +56,36 @@ class TestOrderProcess:
         assert macbook_air['stock'] == 4
         print(f"Created order with ID {order['id']}")
         print(f"Updated stock - Galaxy 26 Ultra: {galaxy['stock']}, MacBook Air: {macbook_air['stock']}")
+
+
+    def test_add_items_to_existing_order(self, client):
+        order_data= {
+        "name": "loai",
+            "email": "loai@gmail.com",
+            "items": [
+                {"product_id": 1, "quantity": 1}
+            ]
+    }
+
+        response = client.post('/api/orders', json= order_data)
+        assert response.status_code == 201
+        print("\n loai order created\n")
+        order_id = response.get_json()['id']
+        print(order_id)
+
+        new_item = {"product_id": 3, "quantity": 2}  # MacBook Pro
+        response = client.post(f'/api/orders/{order_id}/items', json=new_item)
+        assert response.status_code == 201
+
+        item = response.get_json()
+        assert item['product_id'] == 3
+        assert item['quantity'] == 2
+        assert item['order_id'] == order_id
+
+        response = client.get(f'/api/orders/{order_id}')
+        order = response.get_json()
+        assert len(order['items']) == 2
+
+        print(f"Successfully added item to order {order_id}, {order['items']}")
+
+        
