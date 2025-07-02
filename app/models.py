@@ -2,6 +2,16 @@ from . import db
 import enum
 from sqlalchemy import Enum
 
+class PaymentStatus(enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+
+class ShippingStatus(enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    DELIVERED = "delivered"
+
+
 
 # Product Rel Mapping
 # - price
