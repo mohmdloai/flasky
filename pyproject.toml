@@ -1,0 +1,28 @@
+[project]
+name = "flasky"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "blinker==1.9.0",
+    "click==8.2.1",
+    "factory-boy==3.3.3",
+    "faker==37.4.0",
+    "flask==3.1.1",
+    "flask-mail==0.10.0",
+    "flask-sqlalchemy==3.1.1",
+    "iniconfig==2.1.0",
+    "itsdangerous==2.2.0",
+    "jinja2==3.1.6",
+    "markupsafe==3.0.2",
+    "packaging==25.0",
+    "pluggy==1.6.0",
+    "pygments==2.19.2",
+    "pytest==8.4.1",
+    "python-dotenv==1.1.1",
+    "sqlalchemy==2.0.41",
+    "typing-extensions==4.14.0",
+    "tzdata==2025.2",
+    "werkzeug==3.1.3",
+]
