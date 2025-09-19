@@ -17,6 +17,12 @@ from app.helper import send_email
 bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+@bp.route('/orders', methods=['GET'])
+def get_orders():
+    orders = Order.query.all()
+    return jsonify([order.serialize() for order in orders])
+
+
 @bp.route('/products', methods=['GET', 'POST'])
 def products_handler():
     if request.method == 'GET':
