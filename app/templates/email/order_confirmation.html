@@ -1,8 +1,30 @@
 <h4>Thank you for your order, {{ name }}!</h4>
-<p>
-    Your order ID is {{ order_id }} with reference
-    {{ payment_reference }} and total amount of {{ total_amount }}.
+<p>Your order has been successfully placed.</p>
+<h3>Order Items:</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Product</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Subtotal</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.product_name }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>${{ "%.2f"|format(item.price) }}</td>
+            <td>${{ "%.2f"|format(item.subtotal) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p><strong>Total: ${{ "%.2f"|format(total_amount) }}</strong></p>
+    with ID {{ order_id }} with reference
+    {{ payment_reference }} and total amount of {{ total_amount }}$.
 </p>
 <p>We'll notify you once it's shipped.</p>
 <p>Regards</p>
-<p>Flasky Inventory</p>
+<p>lxf Inventory</p>
