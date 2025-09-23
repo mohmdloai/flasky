@@ -170,23 +170,34 @@ def pay_order(order_id):
         return jsonify({'error': 'Cannot pay for an order with no items'}), 400
 
     try:
-
         payment_reference = 'Ref_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 
         order.payment_status = PaymentStatus.PAID
         order.payment_reference = payment_reference
 
         db.session.commit()
+
+        # Prepare items data for email
+        order_items = []
+        for item in order.items:
+            jsonify(order_items.append({
+                'product_name': item.product.name,
+                'quantity': item.quantity,
+                'price': item.product.price,
+                'subtotal': item.product.price * item.quantity
+            }))
+
         send_email(
             subject="Order Confirmation",
             to=order.email,
             template="email/order_confirmation.html",
+            name=order.name,
+            order_id=order.id,
+            payment_reference=order.payment_reference,
+            total_amount=order.total_amount,
+            items=order_items  # Add items to email context
+        )
 
-            name = order.name,
-            order_id=  order.id,
-            payment_reference = order.payment_reference,
-            total_amount= order.total_amount
-)
         return jsonify({
             'message': 'Payment successful',
             'payment_reference': payment_reference,
