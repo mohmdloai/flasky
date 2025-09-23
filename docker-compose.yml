@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  flasky-backend:
+    build: .
+    container_name: flasky-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    networks:
+      - flasky-network
+
+  flasky-frontend:
+    build: ./flasky-frontend
+    container_name: flasky-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./flasky-frontend:/app
+      - /app/node_modules
+    networks:
+      - flasky-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: flasky-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - flasky-backend
+      - flasky-frontend
+    networks:
+      - flasky-network
+
+networks:
+  flasky-network:
+    driver: bridge
