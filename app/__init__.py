@@ -12,7 +12,12 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///inventory.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config.from_object(Config)
-    CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+
+    # Enhanced CORS configuration
+    CORS(app,
+         origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization"])
 
     db.init_app(app)
     mail.init_app(app)
