@@ -3,7 +3,6 @@ from .models import Product, Order, OrderItem, PaymentStatus, ShippingStatus
 from . import db
 import random, string
 from flask import abort
-from app.helper import send_email
 
 
 # api for order process:
@@ -177,26 +176,9 @@ def pay_order(order_id):
 
         db.session.commit()
 
-        # Prepare items data for email
-        order_items = []
-        for item in order.items:
-            jsonify(order_items.append({
-                'product_name': item.product.name,
-                'quantity': item.quantity,
-                'price': item.product.price,
-                'subtotal': item.product.price * item.quantity
-            }))
-
-        send_email(
-            subject="Order Confirmation",
-            to=order.email,
-            template="email/order_confirmation.html",
-            name=order.name,
-            order_id=order.id,
-            payment_reference=order.payment_reference,
-            total_amount=order.total_amount,
-            items=order_items  # Add items to email context
-        )
+        # Import here to avoid circular imports
+        from app.tasks import send_order_confirmation
+        send_order_confirmation.delay(order.id)
 
         return jsonify({
             'message': 'Payment successful',
@@ -205,7 +187,7 @@ def pay_order(order_id):
         }), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'Payment failed: {str(e)}'}), 500
+        return jsonify({'error': f'Payment failed: {str(e)}'}), 400
 
 
 
