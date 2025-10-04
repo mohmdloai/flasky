@@ -99,3 +99,23 @@ TTL low_stock_products
 # Exit Redis CLI
 exit
 ```
+
+
+
+##### some git commands i need to use:
+
+```bash
+ git log --pretty=format:"%h %s"
+```
+
+```bash
+# display the full commit message (subject and body)
+ git log --pretty=format:"%B"
+```
+##### Hints :
+
+```bash
+%h -> represents the abbreviated commit hash.
+%s -> represents the subject (first line) of the commit message.
+%b -> represents the body of the commit message.
+%B -> represents the full raw commit message (subject and body).
