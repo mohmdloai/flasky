@@ -1,6 +1,36 @@
 version: "3.8"
 
 services:
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: flasky-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    networks:
+      - flasky-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: flasky-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - flasky-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   flasky-backend:
     build: .
     container_name: flasky-backend
@@ -8,10 +38,67 @@ services:
       - "3000:3000"
     environment:
       - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=amqp://admin:admin@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - .:/app
     networks:
       - flasky-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: .
+    container_name: flasky-celery-worker
+    command: celery -A celery_worker.celery worker --loglevel=info
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=amqp://admin:admin@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    networks:
+      - flasky-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: .
+    container_name: flasky-celery-beat
+    command: celery -A celery_worker.celery beat --loglevel=info
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=amqp://admin:admin@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    networks:
+      - flasky-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flower:
+    build: .
+    container_name: flasky-flower
+    command: celery -A celery_worker.celery flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=amqp://admin:admin@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - flasky-network
+    depends_on:
+      - celery-worker
 
   flasky-frontend:
     build: ./flasky-frontend
