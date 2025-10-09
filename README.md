@@ -13,7 +13,7 @@ A Flask-based inventory management system with order processing, payment handlin
 
 - Python 3.13+
 - Git
-- Email account (Gmail recommended for email features)
+- Email account (Gmail recommended)
 ### To run with docker :
 
 ```bash
