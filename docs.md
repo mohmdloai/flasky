@@ -119,3 +119,14 @@ exit
 %s -> represents the subject (first line) of the commit message.
 %b -> represents the body of the commit message.
 %B -> represents the full raw commit message (subject and body).
+```
+
+
+#### Access services:
+```bash
+- Flask API: http://localhost:3000
+- RabbitMQ Management: http://localhost:15672 (admin/admin)
+- Flower (Celery monitoring): http://localhost:5555
+- Redis: localhost:6379
+- Monitor tasks in Flower: Visit http://localhost:5555 to see task execution, success/failure rates, and worker status.
+```
