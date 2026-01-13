@@ -1,4 +1,3 @@
-
 <template>
   <div v-if="order">
     <div class="flex items-center justify-between mb-6">
@@ -13,13 +12,13 @@
       <div class="text-right">
         <div class="mb-2">
           <a-tag :color="getStatusColor(order.payment_status)" class="text-sm">
-            Payment: {{ order.payment_status.toUpperCase() }}
+            Payment: {{ order.payment_status?.toUpperCase() }}
           </a-tag>
         </div>
         <div>
           <a-tag :color="getStatusColor(order.shipping_status)" class="text-sm">
             Shipping:
-            {{ order.shipping_status.replace("_", " ").toUpperCase() }}
+            {{ order.shipping_status?.replace("_", " ").toUpperCase() }}
           </a-tag>
         </div>
       </div>
@@ -121,25 +120,38 @@
               <label class="block text-sm font-medium text-gray-700"
                 >Total Amount</label
               >
-              <p class="text-2xl font-bold text-green-600">
-                ${{ order.total_amount?.toFixed(2) }}
+              <p class="text-2xl font-bold text-blue-600">
+                ${{ order.total_amount?.toFixed(2) || "0.00" }}
               </p>
             </div>
 
             <a-button
               v-if="order.payment_status === 'pending'"
               type="primary"
-              size="large"
               block
-              @click="payOrder"
+              size="large"
               :loading="processing"
+              @click="payOrder"
             >
-              Process Payment
+              Pay Now
             </a-button>
+
+            <a-alert
+              v-else
+              type="success"
+              message="Payment Complete"
+              :description="`Reference: ${order.payment_reference}`"
+              show-icon
+            />
           </div>
         </a-card>
       </div>
     </div>
+  </div>
+
+  <!-- Loading State -->
+  <div v-else class="flex justify-center items-center h-64">
+    <a-spin size="large" />
   </div>
 </template>
 
@@ -199,17 +211,17 @@ const fetchOrder = async () => {
     const response = await ordersApi.getById(props.id);
     order.value = response.data;
   } catch (error) {
-    message.error("Failed to fetch order details");
+    message.error(error.message || "Failed to fetch order details");
     router.push("/orders");
   }
 };
 
 const fetchProducts = async () => {
   try {
-    const response = await productsApi.getAll();
-    availableProducts.value = response.data;
+    const response = await productsApi.getAll({ page_size: 100 });
+    availableProducts.value = response.data || [];
   } catch (error) {
-    message.error("Failed to fetch products");
+    message.error(error.message || "Failed to fetch products");
   }
 };
 
@@ -226,7 +238,7 @@ const addItemToOrder = async () => {
     newItem.value = { product_id: null, quantity: 1 };
     fetchOrder(); // Refresh order data
   } catch (error) {
-    message.error(error.response?.data?.error || "Failed to add item");
+    message.error(error.message || "Failed to add item");
   } finally {
     addingItem.value = false;
   }
@@ -237,9 +249,10 @@ const payOrder = async () => {
   try {
     const response = await ordersApi.pay(props.id);
     message.success("Payment successful!");
-    order.value = response.data.order;
+    // Update with the order from response
+    order.value = response.data?.order || response.data;
   } catch (error) {
-    message.error(error.response?.data?.error || "Payment failed");
+    message.error(error.message || "Payment failed");
   } finally {
     processing.value = false;
   }

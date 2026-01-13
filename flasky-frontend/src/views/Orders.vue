@@ -8,6 +8,20 @@
       </a-button>
     </div>
 
+    <!-- Pagination Controls -->
+    <div class="mb-4 flex justify-between items-center">
+      <span class="text-gray-600">
+        Total {{ paginationInfo.total }} orders
+      </span>
+      <a-pagination
+        v-model:current="paginationInfo.current"
+        v-model:pageSize="paginationInfo.pageSize"
+        :total="paginationInfo.total"
+        :show-size-changer="true"
+        @change="handlePageChange"
+      />
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <a-card
         v-for="order in orders"
@@ -19,16 +33,18 @@
         <p class="mb-2"><strong>Customer:</strong> {{ order.name }}</p>
         <p class="mb-2"><strong>Email:</strong> {{ order.email }}</p>
         <p class="mb-2">
-          <strong>Total:</strong> ${{ order.total_amount?.toFixed(2) }}
+          <strong>Total:</strong> ${{
+            order.total_amount?.toFixed(2) || "0.00"
+          }}
         </p>
 
         <div class="flex justify-between items-center mt-4">
           <div>
             <a-tag :color="getStatusColor(order.payment_status)">
-              {{ order.payment_status.toUpperCase() }}
+              {{ order.payment_status?.toUpperCase() }}
             </a-tag>
             <a-tag :color="getStatusColor(order.shipping_status)">
-              {{ order.shipping_status.replace("_", " ").toUpperCase() }}
+              {{ order.shipping_status?.replace("_", " ").toUpperCase() }}
             </a-tag>
           </div>
 
@@ -42,6 +58,14 @@
           </a-button>
         </div>
       </a-card>
+    </div>
+
+    <!-- Empty State -->
+    <div v-if="orders.length === 0 && !loading" class="text-center py-12">
+      <p class="text-gray-500 mb-4">No orders found</p>
+      <a-button type="primary" @click="showCreateModal = true">
+        Create Your First Order
+      </a-button>
     </div>
 
     <!-- Create Order Modal -->
@@ -115,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons-vue";
@@ -126,6 +150,13 @@ const orders = ref([]);
 const availableProducts = ref([]);
 const showCreateModal = ref(false);
 const creatingOrder = ref(false);
+const loading = ref(false);
+
+const paginationInfo = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+});
 
 const newOrder = ref({
   name: "",
@@ -133,14 +164,33 @@ const newOrder = ref({
   items: [{ product_id: null, quantity: 1 }],
 });
 
-const fetchOrders = async () => {
+const fetchOrders = async (page = 1, pageSize = 10) => {
+  loading.value = true;
   try {
-    const response = await ordersApi.getAll();
-    orders.value = response.data;
+    const response = await ordersApi.getAll({
+      page,
+      page_size: pageSize,
+    });
+
+    orders.value = response.data || [];
+
+    // Update pagination from meta
+    if (response.meta?.pagination) {
+      const paginationMeta = response.meta.pagination;
+      paginationInfo.current = paginationMeta.current_page;
+      paginationInfo.pageSize = paginationMeta.page_size;
+      paginationInfo.total = paginationMeta.total_items;
+    }
   } catch (error) {
-    message.error("Failed to fetch orders");
+    message.error(error.message || "Failed to fetch orders");
     console.error("Orders fetch error:", error);
+  } finally {
+    loading.value = false;
   }
+};
+
+const handlePageChange = (page, pageSize) => {
+  fetchOrders(page, pageSize);
 };
 
 const getStatusColor = (status) => {
@@ -163,10 +213,10 @@ const removeItem = (index) => {
 
 const fetchProducts = async () => {
   try {
-    const response = await productsApi.getAll();
-    availableProducts.value = response.data;
+    const response = await productsApi.getAll({ page_size: 100 });
+    availableProducts.value = response.data || [];
   } catch (error) {
-    message.error("Failed to fetch products");
+    message.error(error.message || "Failed to fetch products");
   }
 };
 
@@ -193,6 +243,7 @@ const createOrder = async () => {
     const response = await ordersApi.create(newOrder.value);
     message.success("Order created successfully");
     orders.value.unshift(response.data);
+    paginationInfo.total += 1;
     showCreateModal.value = false;
     newOrder.value = {
       name: "",
@@ -200,7 +251,7 @@ const createOrder = async () => {
       items: [{ product_id: null, quantity: 1 }],
     };
   } catch (error) {
-    message.error(error.response?.data?.error || "Failed to create order");
+    message.error(error.message || "Failed to create order");
   } finally {
     creatingOrder.value = false;
   }
@@ -214,10 +265,10 @@ const payOrder = async (orderId) => {
     // Update the order in the list
     const orderIndex = orders.value.findIndex((o) => o.id === orderId);
     if (orderIndex !== -1) {
-      orders.value[orderIndex] = response.data.order;
+      orders.value[orderIndex] = response.data?.order || response.data;
     }
   } catch (error) {
-    message.error(error.response?.data?.error || "Payment failed");
+    message.error(error.message || "Payment failed");
   }
 };
 
@@ -227,6 +278,6 @@ const viewOrder = (orderId) => {
 
 onMounted(() => {
   fetchProducts();
-  fetchOrders(); // Add this line to fetch real orders
+  fetchOrders();
 });
 </script>

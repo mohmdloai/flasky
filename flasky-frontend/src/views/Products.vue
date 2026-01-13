@@ -1,4 +1,3 @@
-
 <template>
   <div>
     <div class="flex justify-between items-center mb-6">
@@ -13,6 +12,8 @@
       :columns="columns"
       :data-source="products"
       :loading="loading"
+      :pagination="pagination"
+      @change="handleTableChange"
       row-key="id"
     >
       <template #bodyCell="{ column, record }">
@@ -39,22 +40,19 @@
       :confirm-loading="addingProduct"
     >
       <a-form :model="newProduct" layout="vertical">
-        <a-form-item label="Product Name" required>
-          <a-input
-            v-model:value="newProduct.name"
-            placeholder="Enter product name"
-          />
+        <a-form-item label="Name" required>
+          <a-input v-model:value="newProduct.name" placeholder="Product name" />
         </a-form-item>
         <a-form-item label="Price" required>
           <a-input-number
             v-model:value="newProduct.price"
             :min="0"
-            :step="0.01"
+            :precision="2"
             style="width: 100%"
             placeholder="0.00"
           />
         </a-form-item>
-        <a-form-item label="Stock Quantity" required>
+        <a-form-item label="Stock" required>
           <a-input-number
             v-model:value="newProduct.stock"
             :min="0"
@@ -68,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, reactive, onMounted } from "vue";
 import { message } from "ant-design-vue";
 import { PlusOutlined } from "@ant-design/icons-vue";
 import { productsApi } from "../services/api";
@@ -77,6 +75,14 @@ const products = ref([]);
 const loading = ref(false);
 const showAddModal = ref(false);
 const addingProduct = ref(false);
+
+const pagination = reactive({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  showSizeChanger: true,
+  showTotal: (total) => `Total ${total} products`,
+});
 
 const newProduct = ref({
   name: "",
@@ -108,23 +114,39 @@ const columns = [
   },
 ];
 
-const fetchProducts = async () => {
+const fetchProducts = async (page = 1, pageSize = 10) => {
   loading.value = true;
   try {
-    const response = await productsApi.getAll();
-    products.value = response.data;
+    const response = await productsApi.getAll({
+      page,
+      page_size: pageSize,
+    });
+
+    products.value = response.data || [];
+
+    // Update pagination from meta
+    if (response.meta?.pagination) {
+      const paginationMeta = response.meta.pagination;
+      pagination.current = paginationMeta.current_page;
+      pagination.pageSize = paginationMeta.page_size;
+      pagination.total = paginationMeta.total_items;
+    }
   } catch (error) {
-    message.error("Failed to fetch products");
+    message.error(error.message || "Failed to fetch products");
   } finally {
     loading.value = false;
   }
 };
 
+const handleTableChange = (pag) => {
+  fetchProducts(pag.current, pag.pageSize);
+};
+
 const addProduct = async () => {
   if (
     !newProduct.value.name ||
-    !newProduct.value.price ||
-    !newProduct.value.stock
+    newProduct.value.price === null ||
+    newProduct.value.stock === null
   ) {
     message.warning("Please fill in all fields");
     return;
@@ -136,13 +158,13 @@ const addProduct = async () => {
     message.success("Product added successfully");
     showAddModal.value = false;
     newProduct.value = { name: "", price: null, stock: null };
-    fetchProducts();
+    fetchProducts(pagination.current, pagination.pageSize);
   } catch (error) {
-    message.error("Failed to add product");
+    message.error(error.message || "Failed to add product");
   } finally {
     addingProduct.value = false;
   }
 };
 
-onMounted(fetchProducts);
+onMounted(() => fetchProducts());
 </script>
