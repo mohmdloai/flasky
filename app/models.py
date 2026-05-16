@@ -54,11 +54,14 @@ class Order(db.Model):
     shipping_status =db.Column(Enum(ShippingStatus), default=ShippingStatus.PENDING, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    user = db.relationship('User', back_populates='orders')
     items = db.relationship('OrderItem', back_populates='order')
 
     def serialize(self):
         return {
             'id': self.id,
+            'user_id': self.user_id,
             'payment_status': self.payment_status.value,
             'payment_reference': self.payment_reference,
             'shipping_status': self.shipping_status.value,
@@ -150,6 +153,7 @@ class User(db.Model):
     refresh_tokens = db.relationship('RefreshToken', back_populates='user', cascade='all, delete-orphan')
     email_verification_tokens = db.relationship('EmailVerificationToken', back_populates='user', cascade='all, delete-orphan')
     password_reset_tokens = db.relationship('PasswordResetToken', back_populates='user', cascade='all, delete-orphan')
+    orders = db.relationship('Order', back_populates='user')
 
     def set_password(self, password: str):
         """Hash and set the user's password"""
