@@ -4,7 +4,18 @@ from . import db
 import random, string
 from app.utils.response import UnifiedResponse
 from app.utils.pagination import UnifiedPagination
-from app.utils.decorators import auth_required, role_required, optional_auth
+from app.utils.decorators import auth_required
+
+
+def _is_admin(user) -> bool:
+    return bool(user and user.role and user.role.name == 'admin')
+
+
+def _can_access_order(user, order) -> bool:
+    """An order is accessible to its owner and to admins."""
+    if _is_admin(user):
+        return True
+    return order.user_id == user.id
 
 # api for order process:
 # Endpoints
@@ -18,22 +29,22 @@ bp = Blueprint('api', __name__, url_prefix='/api')
 
 
 @bp.route('/orders', methods=['GET'])
-@optional_auth
+@auth_required
 def get_orders():
     """
-    Get all orders with pagination.
-    If authenticated, filter by user (future feature).
+    List orders with pagination. Admins see all orders; regular users see only their own.
 
     Query params:
-        - page: Page number (for page-based pagination)
-        - page_size: Items per page (for page-based pagination)
-        - limit: Number of items (for limit/offset pagination)
-        - offset: Starting position (for limit/offset pagination)
+        - page / page_size  (page-based pagination)
+        - limit / offset    (limit/offset pagination)
         - pagination_type: 'page' or 'limit_offset' (default: 'page')
     """
-    # Note: Orders don't have user_id yet in the model
-    # This is a placeholder for when we add user association
-    queryset = Order.query.order_by(Order.id.desc())
+    user = g.current_user
+
+    queryset = Order.query
+    if not _is_admin(user):
+        queryset = queryset.filter(Order.user_id == user.id)
+    queryset = queryset.order_by(Order.id.desc())
 
     # Determine pagination type
     pagination_type = request.args.get('pagination_type', 'page')
@@ -48,7 +59,7 @@ def get_orders():
         return UnifiedPagination.paginate_by_page(
             queryset=queryset,
             serializer_func=lambda order: order.serialize(),
-            message="Orders retrieved successfully"
+            message="Orders retrieved successfully")
 
 @bp.route('/products', methods=['GET', 'POST'])
 def products_handler():
@@ -143,14 +154,18 @@ def create_order():
 
     body = request.get_json()
 
-    # Validate required fields
-    required_fields = ['name', 'email', 'items']
-    missing_fields = [field for field in required_fields if field not in body]
+    # name/email default to the authenticated user's profile when not provided.
+    full_name = (
+        f"{user.first_name} {user.last_name}".strip()
+        if (user.first_name or user.last_name) else user.username
+    )
+    name = body.get('name') or full_name
+    email = body.get('email') or user.email
 
-    if missing_fields:
+    if 'items' not in body:
         return UnifiedResponse.validation_error({
-            'missing_fields': missing_fields,
-            'message': 'Required fields: name, email, items'
+            'missing_fields': ['items'],
+            'message': 'Required field: items'
         })
 
     if not isinstance(body['items'], list) or len(body['items']) == 0:
@@ -158,12 +173,12 @@ def create_order():
             'items': 'items must be a non-empty list'
         })
 
-    # Check on order [not empty]
     # apply atomicity for transaction -> all or none
     try:
         order = Order(
-            name=body['name'],
-            email=body['email'],
+            name=name,
+            email=email,
+            user_id=user.id,
             payment_status=PaymentStatus.PENDING,
             shipping_status=ShippingStatus.PENDING
         )
@@ -220,12 +235,17 @@ def create_order():
 def add_more_items(order_id):
     """
     Add items to an existing order.
-    Requires authentication.
+    Requires authentication and ownership (or admin).
     """
     order = db.session.get(Order, order_id)
     if not order:
         return UnifiedResponse.not_found(
             message=f"Order with ID {order_id} not found"
+        )
+
+    if not _can_access_order(g.current_user, order):
+        return UnifiedResponse.forbidden(
+            message="You do not have access to this order"
         )
 
     if order.payment_status == PaymentStatus.PAID:
@@ -292,12 +312,17 @@ def add_more_items(order_id):
 def pay_order(order_id):
     """
     Process payment for an order.
-    Requires authentication.
+    Requires authentication and ownership (or admin).
     """
     order = db.session.get(Order, order_id)
     if not order:
         return UnifiedResponse.not_found(
             message=f"Order with ID {order_id} not found"
+        )
+
+    if not _can_access_order(g.current_user, order):
+        return UnifiedResponse.forbidden(
+            message="You do not have access to this order"
         )
 
     if order.payment_status == PaymentStatus.PAID:
@@ -342,16 +367,20 @@ def pay_order(order_id):
 
 
 @bp.route('/orders/<int:order_id>', methods=['GET'])
-@optional_auth
+@auth_required
 def get_order(order_id):
     """
-    Get a specific order by ID.
-    Available to all users (with optional auth).
+    Get a specific order by ID. Owner or admin only.
     """
     order = db.session.get(Order, order_id)
     if not order:
         return UnifiedResponse.not_found(
             message=f"Order with ID {order_id} not found"
+        )
+
+    if not _can_access_order(g.current_user, order):
+        return UnifiedResponse.forbidden(
+            message="You do not have access to this order"
         )
 
     return UnifiedResponse.success(
