@@ -1,11 +1,13 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_mail import Mail
 from flask_session import Session
 from config import Config
 
 db = SQLAlchemy()
+migrate = Migrate()
 mail = Mail()
 sess = Session()
 
@@ -24,6 +26,9 @@ def create_app():
 
     # Initialize extensions
     db.init_app(app)
+    # render_as_batch=True lets Alembic alter columns on SQLite via the table-rebuild idiom
+    from . import models  # noqa: F401  ensure models are imported before Migrate scans metadata
+    migrate.init_app(app, db, render_as_batch=True)
     mail.init_app(app)
     sess.init_app(app)
 
@@ -34,40 +39,33 @@ def create_app():
     app.register_blueprint(routes.bp)
     app.register_blueprint(auth_bp)
 
-    # Create database tables if they don't exist
+    # Seed default roles if they don't exist.
+    # Wrapped in try/except so this is safe on a brand-new DB that hasn't been migrated yet
+    # (e.g. before the first `flask db upgrade`).
     with app.app_context():
-        db.create_all()
-
-        # Seed default roles if they don't exist
         from .models import Role
-        if not Role.query.filter_by(name='admin').first():
-            admin_role = Role(
-                name='admin',
-                description='Administrator with full permissions',
-                permissions={'all': True}
-            )
-            db.session.add(admin_role)
-
-        if not Role.query.filter_by(name='user').first():
-            user_role = Role(
-                name='user',
-                description='Regular user with basic permissions',
-                permissions={'read': True, 'create_order': True}
-            )
-            db.session.add(user_role)
-
-        if not Role.query.filter_by(name='moderator').first():
-            moderator_role = Role(
-                name='moderator',
-                description='Moderator with elevated permissions',
-                permissions={'read': True, 'create_order': True, 'manage_products': True}
-            )
-            db.session.add(moderator_role)
-
         try:
+            if not Role.query.filter_by(name='admin').first():
+                db.session.add(Role(
+                    name='admin',
+                    description='Administrator with full permissions',
+                    permissions={'all': True},
+                ))
+            if not Role.query.filter_by(name='user').first():
+                db.session.add(Role(
+                    name='user',
+                    description='Regular user with basic permissions',
+                    permissions={'read': True, 'create_order': True},
+                ))
+            if not Role.query.filter_by(name='moderator').first():
+                db.session.add(Role(
+                    name='moderator',
+                    description='Moderator with elevated permissions',
+                    permissions={'read': True, 'create_order': True, 'manage_products': True},
+                ))
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            app.logger.warning(f"Could not seed roles: {str(e)}")
+            app.logger.warning(f"Could not seed roles (run `flask db upgrade` first?): {str(e)}")
 
     return app
