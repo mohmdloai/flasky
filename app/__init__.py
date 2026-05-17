@@ -11,6 +11,11 @@ migrate = Migrate()
 mail = Mail()
 sess = Session()
 
+# Importing the models module for its side effect: it registers every model class
+# with db.metadata, which Alembic's autogenerate scans when producing migrations.
+# Without this, `flask db migrate` would emit empty migrations.
+from . import models  # noqa: F401, E402
+
 def create_app():
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///inventory.db"
@@ -27,7 +32,6 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     # render_as_batch=True lets Alembic alter columns on SQLite via the table-rebuild idiom
-    from . import models  # noqa: F401  ensure models are imported before Migrate scans metadata
     migrate.init_app(app, db, render_as_batch=True)
     mail.init_app(app)
     sess.init_app(app)
