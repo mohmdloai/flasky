@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
@@ -22,7 +20,7 @@ services:
     image: redis:7-alpine
     container_name: flasky-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"   # host 6380 → container 6379 (avoid clash with another local Redis on 6379)
     networks:
       - flasky-network
     healthcheck:

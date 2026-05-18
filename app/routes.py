@@ -366,6 +366,73 @@ def pay_order(order_id):
         )
 
 
+@bp.route('/orders/<int:order_id>/status', methods=['PATCH'])
+@auth_required
+def update_shipping_status(order_id):
+    """
+    Admin-only: update an order's shipping_status.
+
+    Body: {"shipping_status": "pending" | "in_progress" | "delivered"}
+
+    DB write is synchronous (so we can return the fresh order); the email
+    notification is fired off to Celery.
+    """
+    if not _is_admin(g.current_user):
+        return UnifiedResponse.forbidden(
+            message="Only admins can update shipping status"
+        )
+
+    order = db.session.get(Order, order_id)
+    if not order:
+        return UnifiedResponse.not_found(
+            message=f"Order with ID {order_id} not found"
+        )
+
+    if not request.is_json:
+        return UnifiedResponse.error(
+            message="Request must be JSON format",
+            status_code=400,
+        )
+
+    new_status = (request.get_json() or {}).get('shipping_status')
+    if not new_status:
+        return UnifiedResponse.validation_error({
+            'shipping_status': 'shipping_status is required',
+        })
+
+    try:
+        status_enum = ShippingStatus(new_status)
+    except ValueError:
+        return UnifiedResponse.validation_error({
+            'shipping_status': f"Must be one of: {', '.join(s.value for s in ShippingStatus)}",
+        })
+
+    if order.shipping_status == status_enum:
+        # No-op — don't queue a redundant email.
+        return UnifiedResponse.success(
+            data=order.serialize(),
+            message="Shipping status unchanged",
+        )
+
+    try:
+        order.shipping_status = status_enum
+        db.session.commit()
+
+        from app.tasks import notify_shipping_status
+        notify_shipping_status.delay(order.id)
+
+        return UnifiedResponse.success(
+            data=order.serialize(),
+            message=f"Shipping status updated to {status_enum.value}",
+        )
+    except Exception as e:
+        db.session.rollback()
+        return UnifiedResponse.error(
+            message=f"Failed to update shipping status: {str(e)}",
+            status_code=500,
+        )
+
+
 @bp.route('/orders/<int:order_id>', methods=['GET'])
 @auth_required
 def get_order(order_id):

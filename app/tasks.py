@@ -2,7 +2,7 @@ from app.celery_app import celery
 from flask import current_app
 from flask_mail import Message
 from app import mail, db, create_app
-from app.models import Order, Product, PaymentStatus, ShippingStatus, OrderItem
+from app.models import Order, Product, PaymentStatus, OrderItem
 from datetime import datetime, timedelta
 from sqlalchemy import func
 import redis
@@ -251,29 +251,32 @@ def cache_popular_products():
         return f"Cached {len(popular_list)} popular products"
 
 
-@celery.task(name='app.tasks.update_order_status')
-def update_order_status(order_id, new_status):
+@celery.task(name='app.tasks.notify_shipping_status')
+def notify_shipping_status(order_id):
     """
-    Update order shipping status asynchronously
+    Send a shipping-status notification email for the given order.
+
+    The DB write is the caller's responsibility (handled by the route synchronously)
+    so the API can return the updated order immediately. This task only handles
+    the slow email I/O off the request path.
     """
     app = create_app()
     with app.app_context():
         order = db.session.get(Order, order_id)
-        if order:
-            order.shipping_status = ShippingStatus(new_status)
-            db.session.commit()
+        if not order:
+            return f"Order {order_id} not found"
 
-            # Send notification email
-            html_content = f"""
-            <h2>Order Status Update</h2>
-            <p>Dear {order.name},</p>
-            <p>Your order #{order.id} status has been updated to: <strong>{new_status}</strong></p>
-            """
-            send_email_async.delay(
-                f"Order #{order.id} Status Update",
-                order.email,
-                html_content
-            )
-
-            return f"Updated order {order_id} status to {new_status}"
-        return f"Order {order_id} not found"
+        status_label = order.shipping_status.value.replace('_', ' ').title()
+        html_content = f"""
+        <h2>Order Status Update</h2>
+        <p>Hi {order.name},</p>
+        <p>Your order <strong>#{order.id}</strong> is now: <strong>{status_label}</strong>.</p>
+        <p>Total: ${order.total_amount:.2f}</p>
+        <p>Thanks for shopping with Flasky.</p>
+        """
+        send_email_async.delay(
+            f"Order #{order.id}: {status_label}",
+            order.email,
+            html_content,
+        )
+        return f"Queued shipping-status email for order {order_id} ({status_label})"
