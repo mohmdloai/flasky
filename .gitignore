@@ -9,3 +9,4 @@ celerybeat-schedule
 celerybeat-schedule.*
 
 *.so
+flask_session

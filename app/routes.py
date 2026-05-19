@@ -4,16 +4,20 @@ from . import db
 import random, string
 from app.utils.response import UnifiedResponse
 from app.utils.pagination import UnifiedPagination
-from app.utils.decorators import auth_required
+from app.utils.decorators import auth_required, role_required
 
 
-def _is_admin(user) -> bool:
-    return bool(user and user.role and user.role.name == 'admin')
+STAFF_ROLES = {'admin', 'moderator'}
+
+
+def _is_staff(user) -> bool:
+    """Admin or moderator — anyone with elevated privileges."""
+    return bool(user and user.role and user.role.name in STAFF_ROLES)
 
 
 def _can_access_order(user, order) -> bool:
-    """An order is accessible to its owner and to admins."""
-    if _is_admin(user):
+    """An order is accessible to its owner and to staff (admin/moderator)."""
+    if _is_staff(user):
         return True
     return order.user_id == user.id
 
@@ -42,7 +46,7 @@ def get_orders():
     user = g.current_user
 
     queryset = Order.query
-    if not _is_admin(user):
+    if not _is_staff(user):
         queryset = queryset.filter(Order.user_id == user.id)
     queryset = queryset.order_by(Order.id.desc())
 
@@ -61,78 +65,74 @@ def get_orders():
             serializer_func=lambda order: order.serialize(),
             message="Orders retrieved successfully")
 
-@bp.route('/products', methods=['GET', 'POST'])
-def products_handler():
+@bp.route('/products', methods=['GET'])
+def list_products():
     """
-    GET: List all products with pagination
-    POST: Create a new product (admin only)
+    Public: list products with pagination.
 
-    Query params for GET:
-        - page: Page number (for page-based pagination)
-        - page_size: Items per page (for page-based pagination)
-        - limit: Number of items (for limit/offset pagination)
-        - offset: Starting position (for limit/offset pagination)
+    Query params:
+        - page / page_size  (page-based pagination)
+        - limit / offset    (limit/offset pagination)
         - pagination_type: 'page' or 'limit_offset' (default: 'page')
     """
-    if request.method == 'GET':
-        queryset = Product.query.order_by(Product.id.asc())
+    queryset = Product.query.order_by(Product.id.asc())
+    pagination_type = request.args.get('pagination_type', 'page')
 
-        # Determine pagination type
-        pagination_type = request.args.get('pagination_type', 'page')
+    if pagination_type == 'limit_offset':
+        return UnifiedPagination.paginate_by_limit_offset(
+            queryset=queryset,
+            serializer_func=lambda prod: prod.serialize(),
+            message="Products retrieved successfully"
+        )
+    return UnifiedPagination.paginate_by_page(
+        queryset=queryset,
+        serializer_func=lambda prod: prod.serialize(),
+        message="Products retrieved successfully"
+    )
 
-        if pagination_type == 'limit_offset':
-            return UnifiedPagination.paginate_by_limit_offset(
-                queryset=queryset,
-                serializer_func=lambda prod: prod.serialize(),
-                message="Products retrieved successfully"
-            )
-        else:
-            return UnifiedPagination.paginate_by_page(
-                queryset=queryset,
-                serializer_func=lambda prod: prod.serialize(),
-                message="Products retrieved successfully"
-            )
 
-    elif request.method == 'POST':
-        # Validate JSON request
-        if not request.is_json:
-            return UnifiedResponse.error(
-                message="Request body should be in JSON format",
-                status_code=400
-            )
+@bp.route('/products', methods=['POST'])
+@auth_required
+@role_required(['admin', 'moderator'])
+def create_product():
+    """Staff-only (admin/moderator): create a new product."""
+    if not request.is_json:
+        return UnifiedResponse.error(
+            message="Request body should be in JSON format",
+            status_code=400
+        )
 
-        body = request.get_json()
+    body = request.get_json()
 
-        # Validate required fields
-        required_fields = ['name', 'price', 'stock']
-        missing_fields = [field for field in required_fields if field not in body]
+    required_fields = ['name', 'price', 'stock']
+    missing_fields = [field for field in required_fields if field not in body]
 
-        if missing_fields:
-            return UnifiedResponse.validation_error({
-                'missing_fields': missing_fields,
-                'message': f'Required fields: {", ".join(required_fields)}'
-            })
+    if missing_fields:
+        return UnifiedResponse.validation_error({
+            'missing_fields': missing_fields,
+            'message': f'Required fields: {", ".join(required_fields)}'
+        })
 
-        try:
-            product = Product(
-                name=body['name'],
-                price=body['price'],
-                stock=body['stock']
-            )
-            db.session.add(product)
-            db.session.commit()
+    try:
+        product = Product(
+            name=body['name'],
+            price=body['price'],
+            stock=body['stock']
+        )
+        db.session.add(product)
+        db.session.commit()
 
-            return UnifiedResponse.created(
-                data=product.serialize(),
-                message="Product created successfully",
-                resource_id=product.id
-            )
-        except Exception as e:
-            db.session.rollback()
-            return UnifiedResponse.error(
-                message=f'Failed to create product: {str(e)}',
-                status_code=500
-            )
+        return UnifiedResponse.created(
+            data=product.serialize(),
+            message="Product created successfully",
+            resource_id=product.id
+        )
+    except Exception as e:
+        db.session.rollback()
+        return UnifiedResponse.error(
+            message=f'Failed to create product: {str(e)}',
+            status_code=500
+        )
 
 
 # for orders
@@ -377,9 +377,9 @@ def update_shipping_status(order_id):
     DB write is synchronous (so we can return the fresh order); the email
     notification is fired off to Celery.
     """
-    if not _is_admin(g.current_user):
+    if not _is_staff(g.current_user):
         return UnifiedResponse.forbidden(
-            message="Only admins can update shipping status"
+            message="Only staff can update shipping status"
         )
 
     order = db.session.get(Order, order_id)

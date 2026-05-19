@@ -39,9 +39,11 @@ def create_app():
     # Import and register blueprints
     from . import routes
     from .auth_routes import auth_bp
+    from .admin_routes import admin_bp
 
     app.register_blueprint(routes.bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
 
     # Seed default roles if they don't exist.
     # Wrapped in try/except so this is safe on a brand-new DB that hasn't been migrated yet
