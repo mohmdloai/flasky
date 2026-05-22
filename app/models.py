@@ -24,15 +24,93 @@ class ShippingStatus(enum.Enum):
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
     stock = db.Column(db.Integer, nullable=False)
+
+    # Cached review aggregates — kept in sync by Review insert/update/delete
+    # so the product grid doesn't have to aggregate at query time.
+    avg_rating = db.Column(db.Float, nullable=False, default=0.0)
+    review_count = db.Column(db.Integer, nullable=False, default=0)
+
+    images = db.relationship(
+        'ProductImage',
+        back_populates='product',
+        cascade='all, delete-orphan',
+        order_by='ProductImage.sort_order',
+    )
+    reviews = db.relationship(
+        'Review',
+        back_populates='product',
+        cascade='all, delete-orphan',
+    )
+
+    def serialize(self, include_images=True):
+        data = {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'price': self.price,
+            'stock': self.stock,
+            'avg_rating': round(self.avg_rating, 2),
+            'review_count': self.review_count,
+        }
+        if include_images:
+            data['images'] = [img.serialize() for img in self.images]
+        return data
+
+
+class ProductImage(db.Model):
+    __tablename__ = 'product_image'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False, index=True)
+    bucket = db.Column(db.String(63), nullable=False)
+    object_key = db.Column(db.String(512), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_primary = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    product = db.relationship('Product', back_populates='images')
+
+    def serialize(self):
+        from app.utils.storage import build_public_url
+        return {
+            'id': self.id,
+            'url': build_public_url(self.bucket, self.object_key),
+            'sort_order': self.sort_order,
+            'is_primary': self.is_primary,
+        }
+
+
+class Review(db.Model):
+    __tablename__ = 'review'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    rating = db.Column(db.Integer, nullable=False)  # validated 1..5 at the route layer
+    comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    product = db.relationship('Product', back_populates='reviews')
+    user = db.relationship('User')
+
+    __table_args__ = (
+        # One review per (user, product) — change if you want users to edit instead.
+        db.UniqueConstraint('user_id', 'product_id', name='uq_review_user_product'),
+        db.CheckConstraint('rating >= 1 AND rating <= 5', name='ck_review_rating_range'),
+    )
 
     def serialize(self):
         return {
             'id': self.id,
-            'name': self.name,
-            'price': self.price,
-            'stock': self.stock
+            'product_id': self.product_id,
+            'user_id': self.user_id,
+            'username': self.user.username if self.user else None,
+            'rating': self.rating,
+            'comment': self.comment,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -140,6 +218,10 @@ class User(db.Model):
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    # Avatar (single-slot: old object is deleted on re-upload)
+    avatar_bucket = db.Column(db.String(63), nullable=True)
+    avatar_object_key = db.Column(db.String(512), nullable=True)
+
     # Role relationship
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
     role = db.relationship('Role', back_populates='users')
@@ -163,6 +245,13 @@ class User(db.Model):
         """Check if the provided password matches the hash"""
         return check_password_hash(self.password_hash, password)
 
+    @property
+    def avatar_url(self):
+        if not self.avatar_bucket or not self.avatar_object_key:
+            return None
+        from app.utils.storage import build_public_url
+        return build_public_url(self.avatar_bucket, self.avatar_object_key)
+
     def serialize(self, include_sensitive=False):
         """Serialize user data"""
         data = {
@@ -171,6 +260,7 @@ class User(db.Model):
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
+            'avatar_url': self.avatar_url,
             'email_verified': self.email_verified,
             'is_active': self.is_active,
             'role': self.role.serialize() if self.role else None,
