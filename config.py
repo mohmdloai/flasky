@@ -50,3 +50,14 @@ class Config:
 
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+    # MinIO / S3 object storage
+    # MINIO_ENDPOINT — used by the backend (container → container, e.g. http://minio:9000)
+    # MINIO_PUBLIC_ENDPOINT — used when building URLs returned to the browser (e.g. http://localhost:9000)
+    MINIO_ENDPOINT = os.getenv('MINIO_ENDPOINT', 'http://localhost:9000')
+    MINIO_PUBLIC_ENDPOINT = os.getenv('MINIO_PUBLIC_ENDPOINT', 'http://localhost:9000')
+    MINIO_ACCESS_KEY = os.getenv('MINIO_ACCESS_KEY', 'flasky-admin')
+    MINIO_SECRET_KEY = os.getenv('MINIO_SECRET_KEY', 'flasky-admin-change-me')
+    MINIO_REGION = os.getenv('MINIO_REGION', 'us-east-1')
+    MINIO_BUCKET_PRODUCTS = os.getenv('MINIO_BUCKET_PRODUCTS', 'products')
+    MINIO_BUCKET_AVATARS = os.getenv('MINIO_BUCKET_AVATARS', 'avatars')
