@@ -2,7 +2,11 @@
 Authentication routes blueprint.
 Handles user registration, login, logout, profile, email verification, and password reset.
 """
-from flask import Blueprint, request, session, g
+import io
+
+from flask import Blueprint, current_app, request, session, g
+from PIL import Image, UnidentifiedImageError
+
 from app import db
 from app.models import User, Role, RefreshToken, EmailVerificationToken, PasswordResetToken
 from app.utils.response import UnifiedResponse
@@ -25,7 +29,18 @@ from app.utils.email_service import (
     send_password_reset_email,
     send_welcome_email
 )
+from app.utils.storage import (
+    upload_fileobj,
+    delete_object,
+    generate_object_key,
+)
 from datetime import datetime
+
+
+ALLOWED_AVATAR_MIMES = {'image/jpeg', 'image/png', 'image/webp'}
+MAX_AVATAR_BYTES = 5 * 1024 * 1024  # 5 MB
+AVATAR_SIZE_PX = 512  # square; retina-friendly for a ~256px display
+AVATAR_JPEG_QUALITY = 85
 
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
@@ -441,6 +456,126 @@ def update_profile():
             message=f"Profile update failed: {str(e)}",
             status_code=500
         )
+
+
+# ============= Avatar =============
+
+@auth_bp.route('/profile/avatar', methods=['POST'])
+@auth_required
+def upload_avatar():
+    """
+    Upload (or replace) the current user's avatar.
+
+    Multipart upload: field name "file". Image is validated via Pillow
+    (rejects anything that isn't a real JPEG/PNG/WebP), resized to a square
+    AVATAR_SIZE_PX × AVATAR_SIZE_PX JPEG, then uploaded to the avatars bucket.
+    The previous avatar object — if any — is deleted only after the new one
+    is successfully recorded in the DB.
+    """
+    user = g.current_user
+    file = request.files.get('file')
+    if not file:
+        return UnifiedResponse.validation_error({'file': 'file is required (multipart/form-data)'})
+
+    if file.mimetype not in ALLOWED_AVATAR_MIMES:
+        return UnifiedResponse.validation_error({
+            'file': f"Unsupported type {file.mimetype}; allowed: {', '.join(sorted(ALLOWED_AVATAR_MIMES))}"
+        })
+
+    file.stream.seek(0, 2)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    if size > MAX_AVATAR_BYTES:
+        return UnifiedResponse.validation_error({
+            'file': f'File too large ({size} bytes); max {MAX_AVATAR_BYTES}'
+        })
+
+    # Pillow doubles as MIME validation — Image.open rejects anything that
+    # isn't a real image regardless of the Content-Type header.
+    try:
+        img = Image.open(file.stream)
+        img.load()
+    except (UnidentifiedImageError, OSError):
+        return UnifiedResponse.validation_error({'file': 'File is not a valid image'})
+
+    # Flatten transparency onto white so JPEG output looks right.
+    if img.mode in ('RGBA', 'LA', 'P'):
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        rgba = img.convert('RGBA')
+        background.paste(rgba, mask=rgba.split()[-1])
+        img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+
+    img.thumbnail((AVATAR_SIZE_PX, AVATAR_SIZE_PX), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=AVATAR_JPEG_QUALITY, optimize=True)
+    buf.seek(0)
+
+    bucket = current_app.config['MINIO_BUCKET_AVATARS']
+    new_key = generate_object_key(f'user-{user.id}', 'avatar.jpg')
+
+    try:
+        upload_fileobj(bucket, new_key, buf, content_type='image/jpeg')
+    except Exception as e:
+        return UnifiedResponse.error(
+            message=f'Upload to storage failed: {str(e)}',
+            status_code=502,
+        )
+
+    old_bucket, old_key = user.avatar_bucket, user.avatar_object_key
+    try:
+        user.avatar_bucket = bucket
+        user.avatar_object_key = new_key
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        delete_object(bucket, new_key)
+        return UnifiedResponse.error(
+            message=f'Failed to update avatar: {str(e)}',
+            status_code=500,
+        )
+
+    # New key committed — safe to drop the old blob.
+    if old_bucket and old_key:
+        delete_object(old_bucket, old_key)
+
+    return UnifiedResponse.success(
+        data=user.serialize(),
+        message='Avatar updated successfully',
+    )
+
+
+@auth_bp.route('/profile/avatar', methods=['DELETE'])
+@auth_required
+def delete_avatar():
+    """Remove the current user's avatar (no-op if none set)."""
+    user = g.current_user
+    old_bucket, old_key = user.avatar_bucket, user.avatar_object_key
+    if not old_bucket or not old_key:
+        return UnifiedResponse.success(
+            data=user.serialize(),
+            message='No avatar to remove',
+        )
+
+    try:
+        user.avatar_bucket = None
+        user.avatar_object_key = None
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return UnifiedResponse.error(
+            message=f'Failed to remove avatar: {str(e)}',
+            status_code=500,
+        )
+
+    delete_object(old_bucket, old_key)
+
+    return UnifiedResponse.success(
+        data=user.serialize(),
+        message='Avatar removed successfully',
+    )
 
 
 # ============= Email Verification =============
